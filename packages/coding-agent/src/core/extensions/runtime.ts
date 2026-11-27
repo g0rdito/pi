@@ -64,6 +64,8 @@ export function createExtensionRuntime(): ExtensionRuntime {
 			eventBusUnsubscribers.add(trackedUnsubscribe);
 			return trackedUnsubscribe;
 		},
+		// Nothing can show an error yet. The runner replaces this when it is created.
+		reportError: () => {},
 		// Pre-bind: queue registrations so bindCore() can flush them once the
 		// model registry is available. bindCore() replaces both with direct calls.
 		registerProvider: (name, config, extensionPath = "<unknown>") => {

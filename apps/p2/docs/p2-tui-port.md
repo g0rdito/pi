@@ -279,7 +279,7 @@ Nested keys are shown as pi spells them.
 | `externalEditor` | **G**, launcher only | never sent to the worker |
 | `images.autoResize`, `images.blockImages` | server | Attachment policy is the server's. Show read-only. |
 | `defaultProvider/defaultModel`, `defaultThinkingLevel`, `modelThinkingLevels`, `thinkingBudgets`, `enabledModels` | server | p2 has `defaultModel`/`thinkingLevel` (`P2/src/runtime/settings.ts`); the others are **new** or (c) |
-| `steeringMode`, `followUpMode`, `transport`, `httpIdleTimeoutMs`, `websocketConnectTimeoutMs`, `retry.*`, `compaction.*` (incl. `modelOverrides`), `cacheWarming`, `showCacheMissNotices` | server | p2 has a subset (`P2/src/runtime/settings.ts`). Read-only display. |
+| `steeringMode`, `followUpMode`, `transport`, `httpIdleTimeoutMs`, `websocketConnectTimeoutMs`, `retry.*`, `compaction.*` (incl. `modelOverrides`), `cacheWarming`, `notices.*` | server | p2 has a subset (`P2/src/runtime/settings.ts`). Read-only display. |
 | `defaultTools`, `codemode.*`, `shellPath`, `shellCommandPrefix`, `npmCommand` | server / env | Tool loadout and shell are server or env configuration (`P2/plugins/envs`). Not TUI settings. |
 | warning toggles, `enableInstallTelemetry`, `defaultProjectTrust`, `treeFilterMode`, `branchSummary.*`, `sessionDir`, `httpProxy` | (c) | No equivalent concept in p2. |
 
@@ -603,7 +603,7 @@ session the worker last reported (`navigation`).
 | `download` | C | `{kind: "file", session, id, name?}` or `{kind: "artifact", session, name, version}` | `GET /download` or `/artifact?download=1` on the fixed origin with the launcher's cookie, `redirect: "error"`, 60 s, ≤ 25 MiB (declared and streamed); saves into the download folder (launcher-only `prefs.json` `downloads`, default `~/Downloads/p2`) under a sanitized name with `O_EXCL` (`name (1).ext`, never overwrites); partial files are removed. The local path is shown in a notice, never returned (`{saved: true}`). |
 | `editor.external` | K `app.editor.external` (Ctrl+G) | — | Asks `editorText` → `{text}` (null when there is no editable editor), writes a 0600 temp file, lends the terminal (worker IO suspended, modes undone, terminal stopped), runs the command by argv, restores, and sends `editorResult` `{text}` through the grant, so it is dropped after navigation or a swap. The command is launcher-only: `prefs.json` `externalEditor`, pi's `externalEditor`, `$VISUAL`, `$EDITOR`, then `nano`/`notepad`; split into argv without a shell (quotes group). |
 | `suspend` | K `app.suspend` (Ctrl+Z) | — | Lends the terminal and raises SIGTSTP (keep-alive, SIGINT ignored while stopped); on SIGCONT restores modes and the worker redraws. Not on Windows. |
-| `devCommand` | C, owner | `{action: "reload"}` (nothing else) | `POST /__p2_dev` with the launcher's sign-in and exact Origin; returns `{message}` from the server. The server decides whether it is a dev server. |
+| `devCommand` | C, owner | `{action: "reload"}` or `{action: "restart"}` (nothing else) | `POST /__p2_dev` with the launcher's sign-in and exact Origin; returns `{message}` from the server. The server decides whether it is a dev server (a restart also needs the `npm run dev` supervisor). A restart runs without the consent screen (`ask: false`: it only asks the server the worker came from to restart itself); the server answers before it stops, and a request that drops anyway returns "Restart requested; reconnecting…". |
 | `signOut` | C, owner | `{all: boolean}` | `POST /owner/logout` or `/owner/logout-all`. Denied for guests, and `all: false` on loopback (a local sign-in comes back from the owner key at once). The server then revokes the connection, so the launcher shows "Signed out on this device." and the owner-link prompt (P0a), forgetting the cookie. |
 
 Worker side: the chat surface answers `copyText`, `editorText` and `editorResult` (`registerLauncherAnswers`,
@@ -1159,13 +1159,13 @@ Requests are debounced (~80 ms), aborted when superseded, and inserted as `@path
 | Web feature | Source | TUI exposure |
 | --- | --- | --- |
 | Shell, navigation, drawer | `P2/plugins/web-shell/web.tsx`, `P2/src/web/AppLayout.tsx`, `P2/src/web/navigation.ts` | Screens + overlays; Ctrl+R and `/resume` instead of a sidebar |
-| Sessions grouped by env:cwd, pinned, busy, children | `P2/src/web/Drawer.tsx` | Session selector (1.9, 1.17) |
+| Sessions grouped by env:cwd, pinned, busy, children | `P2/plugins/sessions/sidebar/` | Session selector (1.9, 1.17) |
 | New session (env + directory browser, model, first prompt) | `P2/src/web/new-session.tsx`, `P2/plugins/envs/DirectoryPicker.tsx` | `/new` overlay (`Envs.envs`, `Envs.listDirectory`) |
 | Session options (rename, pin, archive/restore, relocate) | `P2/plugins/sessions/web.tsx` (Session sheet) | `/name`, `sessions.pin`, `sessions.archive`, `sessions.relocate` |
-| Search, archived | `P2/plugins/search`, `P2/src/web/Drawer.tsx` | Session selector (1.17) |
+| Search, archived | `P2/plugins/search`, `P2/plugins/sessions/sidebar/ListPage.tsx` | Session selector (1.17) |
 | Transcript, tool cards | `P2/src/web/Chat.tsx`, `P2/src/web/Markdown.tsx`, `P2/src/web/Code.tsx` | 1.3, 1.4 |
 | Composer (steer/follow-up, stop, queue edit, attachments, drag/drop) | `P2/plugins/chat/web.tsx:83-200`, `P2/src/web/composer-state.tsx` | Editor, pending area, attachments via **L:pasteImage/attach** shown as chips in a `composer:attachments` widget |
-| Model/thinking sheet | `P2/src/web/ModelPicker.tsx` | 1.7 |
+| Model/thinking (footer links, command menu pages) | `P2/plugins/chat/commands.tsx` | 1.7 |
 | Cost, context, cache, viewers | `P2/src/web/CostPanel.tsx`, `P2/src/web/SessionStats.tsx` | Footer and `/session` (1.16); viewers from `SessionMetrics.clients` |
 | Owner notices, dev reload, worker retry | `P2/src/web/OwnerNotices.tsx`, `WorkerControl.retry` | Notification widget; `/retry-worker`; `/reload` (owner) |
 | Logs | `P2/plugins/logs/web.tsx` | `/logs` overlay |
@@ -1415,7 +1415,7 @@ contract), so no plugin gains a dependency.
   the viewed session's worker log (else the server's), follows the tail and Tab cycles sources. A failed session
   worker (`SessionStatus.error`) is reported once with `/retry-worker` (`WorkerControl.retry`). **Deviation:** dev
   reload is `/dev-reload`, not `/reload` (that is the TUI's own reload, P0c). The dev channel `/__p2_dev` is an owner
-  HTTP route, so the command asks the launcher for a C action `devCommand` (`{action: "reload"}`). The launcher action
+  HTTP route, so the command asks the launcher for a C action `devCommand` (`{action: "reload"}`; `/dev-restart` sends `{action: "restart"}`). The launcher action
   exists since P5 (3.6b).
 - **P11e** (`P2/plugins/envs/tui.ts`): `/envs` is the one environment screen. Enter moves the viewed session to the
   selected environment (section 10.6). Management is on secondary keys:
@@ -1439,7 +1439,7 @@ contract), so no plugin gains a dependency.
   Participants only (`when: participant`), so view-only guests never acquire `Workspace`. Git's unified patch is
   converted to pi's numbered diff lines (`piDiff`) for the copied `renderDiff`. Worker text is sanitized line by line
   (`lineText`). Comments, commits and uploads stay on the web.
-- **Owner panels** (`/logs`, `/notices`, `/retry-worker`, `/dev-reload`, `/envs`, `/ports`, `/devices`, `/share`)
+- **Owner panels** (`/logs`, `/notices`, `/retry-worker`, `/dev-reload`, `/dev-restart`, `/envs`, `/ports`, `/devices`, `/share`)
   are `when: owner`; the notice and worker-status watches start only for owners. A test asserts that guests acquire
   none of them.
 - **P11a** (`P2/plugins/sharing/tui.ts`): `/share` (owner) is the web's share sheet: the read-only and read/write
@@ -1473,7 +1473,7 @@ contract), so no plugin gains a dependency.
   - Bounding and never overwriting downloads are the launcher's job (3.6b).
 - **Launcher results** (`P2/src/tui/grant-notice.ts`): `ok` shows the action's notice and `denied` (declined) shows
   nothing. `failed` says the launcher showed its own message, since the worker never learns it. `busy` and
-  `cancelled` are named. `/dev-reload` shows the server's `{message}` (e.g. "No dirty plugins"). `/devices` sign-out
+  `cancelled` are named. `/dev-reload` and `/dev-restart` show the server's `{message}` (e.g. "No dirty plugins"). `/devices` sign-out
   of "this device" on loopback is refused by the launcher (`denied`, "Not signed out"), because a local sign-in comes
   back from the owner key at once.
 - `ListOverlay` footers wrap (at most three lines each), and `TextViewer` passes the width to its lines, so Markdown

@@ -2,10 +2,10 @@
 	"local/src/egress-policy.ts fetch-call": "KEEP: the single outbound request of the local build. It can only POST to the approved chat completions URL.",
 	"packages/ai/src/api/openai-completions.ts fetch-ref": "KEEP: hands the caller's fetch to the OpenAI client. The local runtime always passes the egress fetch.",
 
-	"packages/ai/node_modules/openai/internal/shims.mjs fetch-ref": "PENDING sdk-fork: the SDK's fallback to global fetch when no fetch is passed. The local runtime always passes one; the fallback goes when the SDK is forked.",
-	"packages/ai/node_modules/openai/internal/uploads.mjs fetch-call": "PENDING sdk-fork: multipart upload support probing fetch with a data: URL. Chat completions never upload.",
-	"packages/ai/node_modules/openai/internal/uploads.mjs fetch-ref": "PENDING sdk-fork: multipart upload support. Chat completions never upload.",
-	"packages/ai/node_modules/openai/auth/workload-identity-auth.mjs fetch-ref": "PENDING sdk-fork: token exchange with auth.openai.com, reached only when workload identity is configured. The local runtime passes an API key only.",
+	"node_modules/openai/internal/shims.mjs fetch-ref": "PENDING sdk-fork: the SDK's fallback to global fetch when no fetch is passed. The local runtime always passes one; the fallback goes when the SDK is forked.",
+	"node_modules/openai/internal/uploads.mjs fetch-call": "PENDING sdk-fork: multipart upload support probing fetch with a data: URL. Chat completions never upload.",
+	"node_modules/openai/internal/uploads.mjs fetch-ref": "PENDING sdk-fork: multipart upload support. Chat completions never upload.",
+	"node_modules/openai/auth/workload-identity-auth.mjs fetch-ref": "PENDING sdk-fork: token exchange with auth.openai.com, reached only when workload identity is configured. The local runtime passes an API key only.",
 
 	"packages/coding-agent/src/utils/management-http.ts fetch-call": "PENDING step-4: HTTP helper of the rg/fd downloader, reached through the find and grep tools when a binary is missing.",
 	"packages/coding-agent/src/utils/tools-manager.ts imports-child_process": "PENDING step-4: the rg/fd downloader probing for installed binaries.",

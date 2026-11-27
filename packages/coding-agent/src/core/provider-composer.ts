@@ -109,6 +109,7 @@ export interface ProviderConfigInput {
 	refreshModels?(context: RefreshModelsContext): Promise<ProviderModelConfig[]>;
 }
 
+/** Whether and how a provider has auth. `configured: false` with `source: "stored"` is a stored credential that does not resolve. */
 export type AuthStatus = {
 	configured: boolean;
 	source?: "stored" | "runtime" | "environment" | "fallback" | "models_json_key" | "models_json_command";
@@ -620,6 +621,9 @@ export function composeModelProvider(
 		auth: { ...(apiKey ? { apiKey } : {}), ...(oauth ? { oauth } : {}) },
 		getModels: () => getAllModels().filter((model) => isModelType(model, "chat")),
 		getAllModels,
+		// Extension hooks read context.credential, so they need the default credential refresh.
+		refreshModelsAuth:
+			extension?.refreshModels || extension?.oauth?.modifyModels ? undefined : base?.refreshModelsAuth,
 		refreshModels:
 			base?.refreshModels || extension?.refreshModels || extension?.oauth?.modifyModels
 				? async (context) => {
