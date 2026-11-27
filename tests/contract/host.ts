@@ -1,5 +1,6 @@
 import type { AgentSession } from "../../packages/coding-agent/src/core/agent-session.ts";
 import type { ToolDefinition } from "../../packages/coding-agent/src/core/extensions/types.ts";
+import type { SessionModelRuntime } from "../../packages/coding-agent/src/core/session-model-runtime.ts";
 
 export interface ContractModel {
 	id: string;
@@ -30,7 +31,7 @@ export interface ContractSessionOptions {
 }
 
 export interface ContractSession {
-	session: AgentSession;
+	session: AgentSession<SessionModelRuntime>;
 	/** Switch to another model from `models`, by id. */
 	setModel(id: string): Promise<void>;
 }

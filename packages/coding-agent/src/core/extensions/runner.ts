@@ -11,7 +11,8 @@ import {
 	type ProviderHeaders,
 } from "@earendil-works/pi-ai";
 import type { KeyId } from "@earendil-works/pi-tui";
-import { type Theme, theme } from "../../modes/interactive/theme/theme.ts";
+import type { Theme } from "../../modes/interactive/theme/theme.ts";
+import { requireSessionFeature } from "../session-features.ts";
 import type { CacheWarmingAction } from "../cache-warmer.ts";
 import type { ResourceDiagnostic } from "../diagnostics.ts";
 import type { KeybindingsConfig } from "../keybindings.ts";
@@ -352,7 +353,7 @@ const noOpUIContext: ExtensionUIContext = {
 	setEditorComponent: () => {},
 	getEditorComponent: () => undefined,
 	get theme() {
-		return theme;
+		return requireSessionFeature("theme") as Theme;
 	},
 	getAllThemes: () => [],
 	getTheme: () => undefined,

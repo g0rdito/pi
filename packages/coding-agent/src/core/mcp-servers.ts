@@ -14,40 +14,15 @@ import {
 	validateMcpServerConfig as validateMcpServerFields,
 } from "@earendil-works/pi-mcp";
 
-/**
- * Regular expression for a tool name pattern where `*` matches any characters, as `toolExposure`,
- * `--tools`, and `--exclude-tools` accept them.
- */
-function toolPatternRegExp(pattern: string): RegExp {
-	const source = pattern
-		.split("*")
-		.map((part) => part.replace(/[.+?^${}()|[\]\\]/g, "\\$&"))
-		.join(".*");
-	return new RegExp(`^${source}$`);
-}
+import { toolPatternRegExp } from "./tool-names.ts";
 
-/** Whether a tool name matches any of the entries, each an exact name or a pattern. */
-export function createToolNameMatcher(entries: readonly string[]): (name: string) => boolean {
-	const names = new Set(entries.filter((entry) => !entry.includes("*")));
-	const patterns = entries.filter((entry) => entry.includes("*")).map(toolPatternRegExp);
-	return (name) => names.has(name) || patterns.some((pattern) => pattern.test(name));
-}
-
-/** MCP resource tools, which reach every server with resources. */
-export const LIST_MCP_RESOURCES_TOOL = "list_mcp_resources";
-export const LIST_MCP_RESOURCE_TEMPLATES_TOOL = "list_mcp_resource_templates";
-export const READ_MCP_RESOURCE_TOOL = "read_mcp_resource";
-
-const MCP_RESOURCE_TOOLS: ReadonlySet<string> = new Set([
-	LIST_MCP_RESOURCES_TOOL,
+export {
+	createToolNameMatcher,
+	isMcpToolName,
 	LIST_MCP_RESOURCE_TEMPLATES_TOOL,
+	LIST_MCP_RESOURCES_TOOL,
 	READ_MCP_RESOURCE_TOOL,
-]);
-
-/** Whether a tool comes from MCP: a server tool (`mcp__<server>__<tool>`) or a resource tool. */
-export function isMcpToolName(name: string): boolean {
-	return name.startsWith("mcp__") || MCP_RESOURCE_TOOLS.has(name);
-}
+} from "./tool-names.ts";
 
 /**
  * - `codemode`: tools are callable from codemode scripts but neither declared to the model nor
@@ -226,43 +201,4 @@ export function validateMcpServerConfig(name: string, raw: unknown): McpServerCo
 	return result.config as McpServerConfig;
 }
 
-/** A server an extension registered with `pi.registerMcpServer()`. */
-export interface RegisteredMcpServer {
-	name: string;
-	config: McpServerConfig;
-	/** Path of the extension that registered the server. */
-	extensionPath: string;
-}
-
-/** Servers registered by the extensions of one runtime. */
-export class McpServerRegistry {
-	private readonly servers = new Map<string, RegisteredMcpServer>();
-	private changeListener: (() => void) | undefined;
-
-	/** Register or replace a server. The caller checks ownership. */
-	register(server: RegisteredMcpServer): void {
-		this.servers.set(server.name, server);
-		this.changeListener?.();
-	}
-
-	/** Remove a server registered by `extensionPath`. Servers of other extensions are left alone. */
-	unregister(name: string, extensionPath: string): void {
-		if (this.servers.get(name)?.extensionPath !== extensionPath) return;
-		this.servers.delete(name);
-		this.changeListener?.();
-	}
-
-	get(name: string): RegisteredMcpServer | undefined {
-		return this.servers.get(name);
-	}
-
-	/** Copies of the registered servers, in registration order. */
-	list(): RegisteredMcpServer[] {
-		return [...this.servers.values()].map((server) => ({ ...server, config: structuredClone(server.config) }));
-	}
-
-	/** Called after every change. The runner sets it when it binds, to emit `mcp_servers_change`. */
-	setChangeListener(listener: (() => void) | undefined): void {
-		this.changeListener = listener;
-	}
-}
+export { McpServerRegistry, type RegisteredMcpServer } from "./mcp-server-registry.ts";

@@ -71,6 +71,8 @@ export class StubServer {
 
 	async stop(): Promise<void> {
 		for (const res of this.open) res.destroy();
+		// The client keeps finished connections alive; without this, close() waits for them to idle out.
+		this.server?.closeAllConnections();
 		await new Promise<void>((resolve) => (this.server ? this.server.close(() => resolve()) : resolve()));
 	}
 

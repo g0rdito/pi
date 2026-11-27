@@ -1,0 +1,24 @@
+{
+	"local/src/egress-policy.ts fetch-call": "KEEP: the single outbound request of the local build. It can only POST to the approved chat completions URL.",
+	"packages/ai/src/api/openai-completions.ts fetch-ref": "KEEP: hands the caller's fetch to the OpenAI client. The local runtime always passes the egress fetch.",
+
+	"packages/ai/node_modules/openai/internal/shims.mjs fetch-ref": "PENDING sdk-fork: the SDK's fallback to global fetch when no fetch is passed. The local runtime always passes one; the fallback goes when the SDK is forked.",
+	"packages/ai/node_modules/openai/internal/uploads.mjs fetch-call": "PENDING sdk-fork: multipart upload support probing fetch with a data: URL. Chat completions never upload.",
+	"packages/ai/node_modules/openai/internal/uploads.mjs fetch-ref": "PENDING sdk-fork: multipart upload support. Chat completions never upload.",
+	"packages/ai/node_modules/openai/auth/workload-identity-auth.mjs fetch-ref": "PENDING sdk-fork: token exchange with auth.openai.com, reached only when workload identity is configured. The local runtime passes an API key only.",
+
+	"packages/coding-agent/src/utils/management-http.ts fetch-call": "PENDING step-4: HTTP helper of the rg/fd downloader, reached through the find and grep tools when a binary is missing.",
+	"packages/coding-agent/src/utils/tools-manager.ts imports-child_process": "PENDING step-4: the rg/fd downloader probing for installed binaries.",
+
+	"packages/coding-agent/src/core/tools/bash.ts imports-child_process": "PENDING step-5: the bash tool runs in the worker until the sandboxed tool process exists.",
+	"packages/coding-agent/src/core/tools/find.ts imports-child_process": "PENDING step-5: the find tool spawns fd in the worker until the sandboxed tool process exists.",
+	"packages/coding-agent/src/core/tools/grep.ts imports-child_process": "PENDING step-5: the grep tool spawns rg in the worker until the sandboxed tool process exists.",
+	"packages/coding-agent/src/utils/shell.ts imports-child_process": "PENDING step-5: shell discovery and process-tree kill for the bash tool.",
+	"packages/coding-agent/src/utils/child-process.ts imports-child_process": "PENDING step-5: spawn wrapper used by the bash tool and by config.ts install detection.",
+	"node_modules/cross-spawn/index.js imports-child_process": "PENDING step-5: dependency of the spawn wrapper.",
+
+	"packages/coding-agent/src/utils/image-resize.ts imports-worker_threads": "PENDING step-4: image resize worker for tool results that contain images.",
+	"packages/coding-agent/src/utils/image-resize.ts new-Worker": "PENDING step-4: image resize worker for tool results that contain images.",
+	"packages/tui/src/autocomplete.ts imports-child_process": "PENDING step-4: the TUI package, pulled in by image conversion and tool renderers. Not used headless.",
+	"packages/tui/src/terminal-image.ts imports-child_process": "PENDING step-4: the TUI package, pulled in by image conversion and tool renderers. Not used headless."
+}

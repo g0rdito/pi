@@ -7,7 +7,8 @@ import { getApiProvider, getModels, getSupportedThinkingLevels } from "@earendil
 import { afterEach, beforeEach, describe, expect, test, vi } from "vitest";
 import { AuthStorage } from "../src/core/auth-storage.ts";
 import type { ModelsJsonProvider } from "../src/core/model-config.ts";
-import { clearApiKeyCache, type ModelRegistry, type ProviderConfigInput } from "../src/core/model-registry.ts";
+import type { ModelRegistry, ProviderConfigInput } from "../src/core/model-registry.ts";
+import { clearApiKeyCache } from "../src/core/provider-composer.ts";
 import { createModelRegistry } from "./model-runtime-test-utils.ts";
 
 describe("ModelRegistry", () => {

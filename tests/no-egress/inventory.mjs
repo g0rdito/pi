@@ -123,7 +123,7 @@ function scanSource(file, text) {
 	return { sites, env: [...env] };
 }
 
-async function inventory(name, entry) {
+export async function inventory(entry) {
 	const unresolved = [];
 	const result = await build({
 		absWorkingDir: ROOT,
@@ -213,6 +213,7 @@ async function inventory(name, entry) {
 
 	const packages = {};
 	const builtins = {};
+	const allBuiltins = new Set();
 	const externals = {};
 	const dynamicImports = [];
 	const sites = [];
@@ -229,7 +230,9 @@ async function inventory(name, entry) {
 			if (!edge.external) continue;
 			const builtin = builtinName(edge.path);
 			if (builtin === undefined) (externals[edge.path] ??= []).push(file);
-			else if (NETWORK_BUILTINS.has(builtin) || PROCESS_BUILTINS.has(builtin)) (builtins[builtin] ??= []).push(file);
+			else if ((retained[file] ?? 0) > 0) allBuiltins.add(builtin);
+			if (builtin !== undefined && (NETWORK_BUILTINS.has(builtin) || PROCESS_BUILTINS.has(builtin)))
+				(builtins[builtin] ??= []).push(file);
 		}
 
 		const scanned = scanSource(file, readFileSync(resolve(ROOT, file), "utf8"));
@@ -249,6 +252,10 @@ async function inventory(name, entry) {
 		packages: Object.fromEntries(Object.entries(packages).sort(([a], [b]) => a.localeCompare(b))),
 		flaggedPackages: Object.fromEntries(flaggedPackages.sort().map((pkg) => [pkg, chain(firstFileOf(pkg))])),
 		builtins: Object.fromEntries(Object.entries(builtins).sort(([a], [b]) => a.localeCompare(b))),
+		// What ends up in the bundle, as opposed to what is merely reachable: tree shaking
+		// drops a file whose exports nothing uses.
+		retainedFiles: files.filter((file) => (retained[file] ?? 0) > 0).sort(),
+		retainedBuiltins: [...allBuiltins].sort(),
 		externals,
 		unresolved,
 		directImports,
@@ -259,22 +266,33 @@ async function inventory(name, entry) {
 	};
 }
 
-const args = process.argv.slice(2);
-let out = "tests/no-egress/baseline/egress-inventory.json";
-const entries = {};
-for (let i = 0; i < args.length; i++) {
-	if (args[i] === "--out") out = args[++i];
-	else {
-		const [name, entry] = args[i].split("=");
-		entries[name] = entry;
-	}
-}
-const selected = Object.keys(entries).length > 0 ? entries : DEFAULT_ENTRIES;
+export { FLAGGED_PACKAGES, NETWORK_BUILTINS, PROCESS_BUILTINS, packageOf, ROOT };
 
-const report = { entries: {} };
-for (const [name, entry] of Object.entries(selected)) {
-	const data = await inventory(name, entry);
-	report.entries[name] = data;
+if (process.argv[1] === fileURLToPath(import.meta.url)) await main(process.argv.slice(2));
+
+async function main(args) {
+	let out = "tests/no-egress/baseline/egress-inventory.json";
+	const entries = {};
+	for (let i = 0; i < args.length; i++) {
+		if (args[i] === "--out") out = args[++i];
+		else {
+			const [name, entry] = args[i].split("=");
+			entries[name] = entry;
+		}
+	}
+	const selected = Object.keys(entries).length > 0 ? entries : DEFAULT_ENTRIES;
+
+	const report = { entries: {} };
+	for (const [name, entry] of Object.entries(selected)) {
+		const data = await inventory(entry);
+		report.entries[name] = data;
+		printSummary(name, data);
+	}
+	writeFileSync(resolve(ROOT, out), `${JSON.stringify(report, null, "\t")}\n`);
+	console.log(`wrote ${out}`);
+}
+
+function printSummary(name, data) {
 	const count = (kind) => data.sites.filter((site) => site.kind.startsWith(kind)).length;
 	console.log(
 		[
@@ -291,5 +309,3 @@ for (const [name, entry] of Object.entries(selected)) {
 		].join(" "),
 	);
 }
-writeFileSync(resolve(ROOT, out), `${JSON.stringify(report, null, "\t")}\n`);
-console.log(`wrote ${out}`);

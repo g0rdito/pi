@@ -11,10 +11,11 @@ import { afterEach, beforeEach, describe, expect, it } from "vitest";
 import type { AgentSessionEvent } from "../../packages/coding-agent/src/core/agent-session.ts";
 import type { ToolDefinition } from "../../packages/coding-agent/src/core/extensions/types.ts";
 import type { ContractHost, ContractSession, ContractSessionOptions } from "./host.ts";
+import { localHost } from "./host-local.ts";
 import { upstreamHost } from "./host-upstream.ts";
 import { StubServer } from "./stub-server.ts";
 
-const HOSTS: Record<string, ContractHost> = { upstream: upstreamHost };
+const HOSTS: Record<string, ContractHost> = { upstream: upstreamHost, local: localHost };
 const hostName = process.env.PI_CONTRACT_HOST ?? "upstream";
 const host = HOSTS[hostName];
 if (!host) throw new Error(`unknown PI_CONTRACT_HOST ${hostName}`);

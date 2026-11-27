@@ -52,12 +52,49 @@ The sandbox step has to provision a pinned `fd` and `rg` instead.
 
 ## Delta from upstream
 
+### Added
+
 | Path | Purpose |
 |---|---|
 | `FORK.md` | this file |
-| `scripts/local/` | toolchain image and container wrapper |
-| `tests/no-egress/inventory.mjs` | egress inventory over entry points |
-| `tests/no-egress/baseline/` | inventory and model-data hashes at the pin |
+| `local/src/` | the local build: egress policy, model runtime, session factory |
+| `local/closure.json`, `local/closure-reasons.json` | what the local bundle contains, and why each call site is there |
+| `scripts/local/` | toolchain image, container wrapper, closure gate |
+| `tests/contract/` | the session contract, run against both upstream and the local build |
+| `tests/no-egress/` | egress inventory, and its output at the pin |
+
+The local build lives in `local/`, not under `packages/`: a new workspace package
+changes `package-lock.json`, and the lockfile is kept identical to upstream's.
+
+### Changed in upstream files
+
+Each change removes an import edge from `core/agent-session.ts` to code the local
+build must not ship. Upstream behaviour is unchanged: `core/sdk.ts` imports
+`core/session-features-default.ts`, which installs everything that became optional.
+
+| Upstream file | Change |
+|---|---|
+| `core/agent-session.ts` | Generic over its model runtime (`SessionModelRuntime`, default `ModelRuntime`). Imports helpers from `pi-ai`, not `pi-ai/compat`; imports the extension runner, wrapper and types directly, not through the `extensions/index.ts` barrel. HTML export, bug-report summary, the legacy stream check and the provider-registry reset go through `core/session-features.ts`. |
+| `core/compaction/compaction.ts` | The `completeSimple` fallback for a summary requested without a stream function goes through `session-features`. The local build installs none, so every summary uses the session's stream function. |
+| `core/extensions/runner.ts` | The TUI theme handed to extensions goes through `session-features`. |
+| `core/extensions/loader.ts` | `createExtensionRuntime` moved to `core/extensions/runtime.ts`; re-exported. |
+| `core/mcp-servers.ts` | Tool-name matching moved to `core/tool-names.ts`, `McpServerRegistry` to `core/mcp-server-registry.ts`; both re-exported. |
+| `core/model-registry.ts` | Takes a `SessionModelRuntime`. No longer re-exports `clearApiKeyCache` (import it from `provider-composer.ts`). |
+| `core/http-dispatcher.ts`, `core/settings-manager.ts` | Idle-timeout parsing moved to `core/http-idle-timeout.ts`, so settings no longer import `undici`. |
+| `core/sdk.ts` | Imports `session-features-default.ts`. |
+| `vitest.config.ts`, `test/setup-session-features.ts` | Upstream tests build sessions without `sdk.ts`, so a setup file installs the features. |
+| `test/model-registry.test.ts` | Follows the `clearApiKeyCache` move. |
+
+### Gates
+
+```bash
+scripts/local/run.sh --net none node scripts/local/check-closure.mjs
+scripts/local/run.sh --net none sh -c 'cd local && npx vitest run'
+scripts/local/run.sh --net none sh -c 'cd tests/contract && PI_CONTRACT_HOST=local npx vitest run'
+```
+
+Run upstream's suites with `--net none` too. A test that mocks a provider and
+misses will otherwise make a live request.
 
 ## Upstream intake
 

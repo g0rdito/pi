@@ -54,17 +54,13 @@ import {
 	isRetryableAssistantError,
 	modelsAreEqual,
 	type RetryCallbacks,
-	resetApiProviders,
-	streamSimple,
-} from "@earendil-works/pi-ai/compat";
-import { getThemeByName, theme } from "../modes/interactive/theme/theme.ts";
+} from "@earendil-works/pi-ai";
 import { stripFrontmatter } from "../utils/frontmatter.ts";
 import { processImage } from "../utils/image-process.ts";
 import { sleep } from "../utils/sleep.ts";
 import { normalizeToolResultImages } from "../utils/tool-result-images.ts";
 import { formatNoApiKeyFoundMessage, formatNoModelSelectedMessage } from "./auth-guidance.ts";
 import { type BashResult, executeBashWithOperations } from "./bash-executor.ts";
-import { generateBugReportSummary } from "./bug-report.ts";
 import type { CacheWarmer, CacheWarmingStatus } from "./cache-warmer.ts";
 import {
 	type CompactionPreparation,
@@ -80,17 +76,13 @@ import {
 	shouldCompact,
 } from "./compaction/index.ts";
 import { DEFAULT_THINKING_LEVEL, THINKING_LEVEL_OPTIONS } from "./defaults.ts";
-import { exportSessionToHtml, type ToolHtmlRenderer } from "./export-html/index.ts";
-import { createToolHtmlRenderer } from "./export-html/tool-renderer.ts";
 import {
 	type AgentActivityOutcome,
 	type BoundaryContextPreview,
 	type ContextUsage,
 	type ExecuteToolOptions,
 	type ExtensionCommandContextActions,
-	type ExtensionErrorListener,
 	type ExtensionMode,
-	ExtensionRunner,
 	type ExtensionUIContext,
 	type InputSource,
 	type MessageEndEvent,
@@ -102,7 +94,6 @@ import {
 	type SessionBoundaryDraft,
 	type SessionCompactFailedEvent,
 	type SessionStartEvent,
-	type ShutdownHandler,
 	type ToolDefinition,
 	type ToolExecutionEndEvent,
 	type ToolExecutionStartEvent,
@@ -112,13 +103,21 @@ import {
 	type ToolLoadout,
 	type TreePreparation,
 	type TurnStartEvent,
-	wrapRegisteredTools,
-} from "./extensions/index.ts";
-import { type BeforeAgentStartTrigger, emitSessionShutdownEvent } from "./extensions/runner.ts";
-import { createToolNameMatcher, isMcpToolName } from "./mcp-servers.ts";
+} from "./extensions/types.ts";
+import {
+	type BeforeAgentStartTrigger,
+	emitSessionShutdownEvent,
+	type ExtensionErrorListener,
+	ExtensionRunner,
+	type ShutdownHandler,
+} from "./extensions/runner.ts";
+import { wrapRegisteredTools } from "./extensions/wrapper.ts";
+import { requireSessionFeature, sessionFeatures } from "./session-features.ts";
+import { createToolNameMatcher, isMcpToolName } from "./tool-names.ts";
 import { type BashExecutionMessage, type CustomMessage, convertToLlm } from "./messages.ts";
 import { ModelRegistry } from "./model-registry.ts";
 import type { ModelRuntime } from "./model-runtime.ts";
+import type { SessionModelRuntime } from "./session-model-runtime.ts";
 import { NestedToolCallRunner } from "./nested-tool-calls.ts";
 import { expandPromptTemplate, type PromptTemplate } from "./prompt-templates.ts";
 import type { ResourceExtensionPaths, ResourceLoader } from "./resource-loader.ts";
@@ -165,10 +164,10 @@ import {
  * createAgentSession installs. Summaries sent through them must not pass pre-resolved credentials:
  * the runtime would take them as an explicit API key instead of the stored OAuth login (#11520).
  */
-const runtimeStreamFunctions = new WeakMap<StreamFn, ModelRuntime>();
+const runtimeStreamFunctions = new WeakMap<StreamFn, SessionModelRuntime>();
 
 /** Mark `streamFn` as resolving auth through `modelRuntime` on its own. */
-export function markRuntimeStreamFunction(streamFn: StreamFn, modelRuntime: ModelRuntime): void {
+export function markRuntimeStreamFunction(streamFn: StreamFn, modelRuntime: SessionModelRuntime): void {
 	runtimeStreamFunctions.set(streamFn, modelRuntime);
 }
 
@@ -263,7 +262,7 @@ function withoutDeletedHeaders(headers: ProviderHeaders | undefined): Record<str
 		: undefined;
 }
 
-export interface AgentSessionConfig {
+export interface AgentSessionConfig<R extends SessionModelRuntime = ModelRuntime> {
 	agent: Agent;
 	sessionManager: SessionManager;
 	settingsManager: SettingsManager;
@@ -275,7 +274,7 @@ export interface AgentSessionConfig {
 	/** SDK custom tools registered outside extensions */
 	customTools?: ToolDefinition[];
 	/** Canonical model/auth runtime used by coding-agent internals. */
-	modelRuntime: ModelRuntime;
+	modelRuntime: R;
 	/** Keeps the prompt cache entry of the last session request warm. */
 	cacheWarmer?: Pick<CacheWarmer, "cancel" | "status" | "onAgentSettled" | "onModeChanged" | "onWarmed">;
 	/** Initial active built-in tool names. Default: [read, bash, edit, write] */
@@ -406,7 +405,7 @@ function getNextCycleIndex(
 	return direction === "forward" ? (currentIndex + 1) % length : (currentIndex - 1 + length) % length;
 }
 
-export class AgentSession {
+export class AgentSession<R extends SessionModelRuntime = ModelRuntime> {
 	readonly agent: Agent;
 	readonly sessionManager: SessionManager;
 	readonly settingsManager: SettingsManager;
@@ -498,7 +497,7 @@ export class AgentSession {
 	private _extensionErrorListener?: ExtensionErrorListener;
 	private _extensionErrorUnsubscriber?: () => void;
 
-	private _modelRuntime: ModelRuntime;
+	private _modelRuntime: R;
 	private _cacheWarmer?: Pick<CacheWarmer, "cancel" | "status" | "onAgentSettled" | "onModeChanged" | "onWarmed">;
 
 	// Tool registry for extension getTools/setTools
@@ -515,7 +514,7 @@ export class AgentSession {
 	/** Prompt options after before_agent_start mutations for the active run. */
 	private _runSystemPromptOptions?: NormalizedBuildSystemPromptOptions;
 
-	constructor(config: AgentSessionConfig) {
+	constructor(config: AgentSessionConfig<R>) {
 		this.agent = config.agent;
 		this.sessionManager = config.sessionManager;
 		this.settingsManager = config.settingsManager;
@@ -558,7 +557,7 @@ export class AgentSession {
 		if (this._usesDefaultTools) this._restoreToolsFromTranscript(this._defaultToolModifiers);
 	}
 
-	get modelRuntime(): ModelRuntime {
+	get modelRuntime(): R {
 		return this._modelRuntime;
 	}
 
@@ -620,7 +619,7 @@ export class AgentSession {
 					signal,
 				})
 			: { model: selectedModel, thinkingLevel: this.thinkingLevel };
-		if (this.agent.streamFunction === streamSimple) {
+		if (this.agent.streamFunction === sessionFeatures().legacyStreamSimple) {
 			return { ...(await this._getRequiredRequestAuth(model, signal)), thinkingLevel };
 		}
 		if (runtimeStreamFunctions.get(this.agent.streamFunction) === this._modelRuntime) {
@@ -3834,7 +3833,7 @@ export class AgentSession {
 		const previousDefaultTools = new Set(getDefaultTools());
 		await this.settingsManager.reload();
 		this.syncQueueModesFromSettings();
-		resetApiProviders();
+		sessionFeatures().resetApiProviders?.();
 		await this._resourceLoader.reload();
 		// Activate tools newly added to defaultTools. Removed ones stay active, and tools disabled
 		// during the session stay disabled unless the setting newly adds them.
@@ -4453,22 +4452,13 @@ export class AgentSession {
 	 * @returns Path to exported file
 	 */
 	async exportToHtml(outputPath?: string, options: { themeName?: string } = {}): Promise<string> {
-		const themeName = [options.themeName, this.settingsManager.getTheme()].find(
-			(candidate) => candidate !== undefined && getThemeByName(candidate) !== undefined,
-		);
-
-		// Create tool renderer if we have an extension runner (for custom tool HTML rendering)
-		const toolRenderer: ToolHtmlRenderer = createToolHtmlRenderer({
-			getToolRenderers: (name) =>
-				this._extensionRunner.resolveToolRenderers(name, () => this.getToolDefinition(name)),
-			theme,
-			cwd: this.sessionManager.getCwd(),
-		});
-
-		return await exportSessionToHtml(this.sessionManager, this.state, {
+		return await requireSessionFeature("exportToHtml")({
+			sessionManager: this.sessionManager,
+			state: this.state,
+			extensionRunner: this._extensionRunner,
+			getToolDefinition: (name) => this.getToolDefinition(name),
+			themeCandidates: [options.themeName, this.settingsManager.getTheme()],
 			outputPath,
-			themeName,
-			toolRenderer,
 		});
 	}
 
@@ -4491,7 +4481,7 @@ export class AgentSession {
 		if (!model) {
 			throw new Error("No model selected");
 		}
-		return generateBugReportSummary({
+		return requireSessionFeature("generateBugReportSummary")({
 			...(await this._getSummarizationRequestAuth(model, options.signal)),
 			messages: this.messages,
 			hint: options.hint,

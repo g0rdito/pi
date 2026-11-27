@@ -25,7 +25,7 @@ import type {
 	Provider,
 	ProviderHeaders,
 } from "@earendil-works/pi-ai";
-import type { ModelRuntime } from "./model-runtime.ts";
+import type { SessionModelRuntime } from "./session-model-runtime.ts";
 import type { AuthStatus, ProviderConfigInput } from "./provider-composer.ts";
 import type { VirtualModelDefinition } from "./virtual-models.ts";
 
@@ -39,16 +39,15 @@ export type ResolvedRequestAuth =
 			env?: Record<string, string>;
 	  }
 	| { ok: false; error: string };
-export { clearApiKeyCache } from "./provider-composer.ts";
 
 /**
  * Synchronous compatibility facade exposed to extensions.
  * Coding-agent internals use ModelRuntime directly.
  */
 export class ModelRegistry {
-	private readonly runtime: ModelRuntime;
+	private readonly runtime: SessionModelRuntime;
 
-	constructor(runtime: ModelRuntime) {
+	constructor(runtime: SessionModelRuntime) {
 		this.runtime = runtime;
 	}
 
